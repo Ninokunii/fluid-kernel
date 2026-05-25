@@ -1,0 +1,12 @@
+# Keep the old Python image generator in the repository for migration evidence,
+# but exclude it from GitHub Linguist language percentages so the repo presents
+# the current C/ASM kernel mainline accurately.
+legacy/** linguist-vendored
+
+# Verification/tooling scripts are not the kernel runtime.
+tools/** linguist-generated
+
+# Generated assets and docs should not dominate language statistics.
+docs/** linguist-documentation
+*.md linguist-documentation
+kernel/assets/** linguist-generated
