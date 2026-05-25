@@ -1,0 +1,32 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Generated kernel/demo artifacts
+build/
+*.img
+*.iso
+*.bin
+*.ppm
+*.png
+*.pcap
+*.log
+*.out
+
+# Local/editor files
+.idea/
+.vscode/
+*.swp
+
+# Secrets/keys must never be committed
+.env
+.env.*
+*.pem
+*.key
+*.keystore
+*.jks
+id_*
