@@ -1,128 +1,119 @@
 # Fluid Kernel
 
-Fluid Kernel is an experimental handwritten OS kernel for Agent-native computing. It boots in QEMU without Linux, Android, Chromium, WebView, or a browser shell, mounts a tiny initramfs-like package, parses a constrained HTML/CSS subset, builds kernel-resident DOM/render/compositor state, and paints the Agent-generated interface directly to the framebuffer.
+Fluid Kernel is an experimental handwritten OS kernel for Agent-native computing. The mainline is now a C/ASM kernel tree: a NASM boot sector loads a freestanding i386 C kernel, enters protected mode, parses a constrained Agent HTML payload, builds kernel-resident UI state, and renders directly to the VGA framebuffer in QEMU.
 
-This repository is intentionally early and research-oriented. The goal is not to ship a normal app launcher; the goal is to grow a clean non-Linux kernel architecture where tasks, interfaces, capabilities, files, devices, input, and generated UI are first-class kernel/runtime concepts.
+The original Python image generator still exists, but it has been demoted to `legacy/python-image-builder/`. It is no longer the first-class kernel source tree.
 
-## What Works Today
+## Mainline Status
 
-- BIOS floppy boot path: stage1 -> stage1.5 loader -> protected-mode handwritten kernel.
-- QEMU-bootable HTML kernel image generated from `kernel/stage_b/build_html_kernel.py`.
-- FHTML1 initramfs-style payload containing `kernel/stage_b/html/order-agent.html`.
-- Kernel-side parser for a constrained HTML/CSS subset.
-- Kernel memory DOM, render tree, CSS/style state, compositor damage/display-list path, and framebuffer paint.
-- Prototype Linux-class primitives: VFS/initramfs/devfs records, dentry/inode/file/page-cache evidence, task/process/mm records, ring3/int80 syscall evidence, driver/devfs/input/socket-style evidence, and visual regression artifacts.
-- Browser/Chrome is used only as an optional golden-reference screenshot generator for visual comparison; it is not used at runtime by the kernel.
-
-## What This Is Not
-
-- Not a WebView wrapper.
-- Not an Android launcher.
-- Not a Chromium shell.
-- Not Linux.
-- Not production-ready.
-- Not yet a Linux-class complete kernel; it is a bootable research prototype moving in that direction.
-
-## Requirements
-
-On macOS or Linux:
-
-- Python 3.11+
-- QEMU with `qemu-system-x86_64`
-- Pillow for PNG/report generation: `python3 -m pip install pillow`
-- Google Chrome or Chromium only if running the browser golden visual comparison
-
-## Quick Start
-
-Build and run the handwritten HTML kernel headlessly in QEMU:
-
-```bash
-python3 tools/run-fluid-kernel-html.py
-```
-
-Expected result:
-
-- `build/fluid-kernel-html.img`
-- `build/fluidos-html-kernel/serial.log`
-- `build/fluidos-html-kernel/html-kernel-final.png`
-- `build/fluidos-html-kernel/html-kernel-report.json`
-
-Run the visual comparison against a browser-rendered reference:
-
-```bash
-python3 tools/compare-fluid-html-visual.py
-```
-
-Expected result:
-
-- `build/fluidos-html-kernel/reference-html.png`
-- `build/fluidos-html-kernel/visual-side-by-side.png`
-- `build/fluidos-html-kernel/visual-report.json`
-
-Open an interactive QEMU window:
-
-```bash
-python3 tools/run-fluid-kernel-html.py --visible
-```
-
-## Current Architecture
+The current mainline boots this path:
 
 ```text
-BIOS/QEMU
-  -> stage1 boot sector
-  -> stage1.5 disk loader
-  -> protected-mode handwritten kernel
-  -> FHTML1 initramfs mount
-  -> VFS/dentry/inode/file/page-cache path
-  -> HTML stream parser
-  -> kernel DOM + attributes + style records
-  -> render tree + compositor damage/display-list
-  -> framebuffer paint
-  -> PS/2 keyboard/mouse input
-  -> Agent task/provider/payment capability flow evidence
+QEMU BIOS
+  -> boot/stage1.asm
+  -> protected-mode jump
+  -> kernel/main.c
+  -> builtin HTML payload from kernel/assets/order-agent.html
+  -> kernel/html.c tokenizer
+  -> kernel framebuffer renderer
+  -> VGA mode 13h framebuffer
 ```
 
-The browser golden path is separate:
-
-```text
-HTML file -> Chrome screenshot -> visual reference only
-```
-
-Runtime rendering stays inside the QEMU-booted kernel.
+Runtime rendering is not browser/WebView/Chromium. Browser tooling is only allowed for reference comparison in the legacy verifier path.
 
 ## Repository Layout
 
 ```text
-docs/                    Architecture/spec/roadmap notes
-kernel/stage_b/          Bootloader and handwritten kernel generators
-kernel/stage_b/html/     Agent-generated HTML payload sample
-tools/                   QEMU runners, verifiers, visual comparison tools
+boot/                 NASM boot sector and protected-mode entry
+include/fluid/        Freestanding kernel headers
+kernel/               Mainline C kernel runtime
+kernel/assets/        Builtin Agent HTML payloads
+linker.ld             i386 ELF linker script
+Makefile              Mainline build/run/verify entrypoint
+tools/                Mainline QEMU runners/verifiers
+legacy/               Previous Python-generated kernel prototype
 ```
 
-## Verification Commands
+## Requirements
+
+On macOS with Homebrew:
 
 ```bash
-python3 -m py_compile kernel/stage_b/build_html_kernel.py tools/run-fluid-kernel-html.py tools/compare-fluid-html-visual.py
-python3 - <<'PY'
-import kernel.stage_b.build_html_kernel as k
-k.assert_memory_map_nonoverlap()
-k.assert_state_words_unique()
-print('maps ok')
-PY
-python3 tools/run-fluid-kernel-html.py
-python3 tools/compare-fluid-html-visual.py
+brew install nasm llvm lld qemu
 ```
+
+The Makefile defaults to Homebrew LLVM paths. On Linux, override `LLVM_PREFIX`, `LD`, `OBJCOPY`, and `QEMU` if needed.
+
+## Build
+
+```bash
+make clean
+make
+```
+
+Output:
+
+```text
+build/fluid-kernel.img
+```
+
+## Run
+
+```bash
+make run
+```
+
+## Verify
+
+```bash
+make verify
+```
+
+Expected result:
+
+```json
+{
+  "status": "pass"
+}
+```
+
+The verifier boots the C/ASM kernel in QEMU, captures serial output and framebuffer state, and requires these runtime markers:
+
+```text
+fluid.stage1 asm boot ok
+fluid.kernel.c entry protected-mode=1 runtime=c/asm
+initramfs.builtin file=/agent-order-task.html source=objcopy-blob status=mounted
+html.parser.c start source=initramfs engine=c-tokenizer
+html.parser.c complete buttons=15 status=ok
+html.render.c framebuffer=mode13 dom=kernel-memory status=complete
+kernel.halt reason=demo-complete
+```
+
+## Legacy Prototype
+
+The previous Python-generated handwritten machine-code kernel is preserved here:
+
+```text
+legacy/python-image-builder/
+```
+
+Run its old verification path with:
+
+```bash
+make legacy-verify
+```
+
+That path still matters as a richer architecture/evidence prototype, but the repository front door is now the C/ASM kernel.
 
 ## Roadmap
 
-The next serious architecture milestones are:
+Next mainline milestones:
 
-1. Replace remaining fixed-path probes with reusable component-by-component `namei` lookup.
-2. Move fixed kernel tables toward allocator-backed objects and lifetime/refcount rules.
-3. Strengthen scheduler, process, fd, VFS, device, socket, and page-cache semantics beyond evidence markers.
-4. Add a real network path suitable for provider calls.
-5. Expand HTML/CSS/layout/rendering fidelity while keeping runtime rendering inside the kernel.
-6. Build a contribution-friendly verifier suite so regressions are caught by QEMU evidence, not screenshots alone.
+1. Replace builtin HTML blob with a real packed initramfs table read by C VFS code.
+2. Add C dentry/inode/file objects and component-by-component `namei` lookup.
+3. Move framebuffer rendering from direct rectangles into a compositor/display-list API.
+4. Port the stronger legacy evidence into real C subsystems: scheduler, syscall, fd table, page cache, driver model, input queue, and Agent provider IPC.
+5. Improve HTML/CSS/layout fidelity while keeping runtime rendering inside the kernel.
 
 ## License
 
